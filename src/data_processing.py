@@ -1,59 +1,32 @@
-import os
-import json
-import cv2
-from pathlib import Path
+from datasets import load_dataset
+from torchvision import transforms
+from PIL import Image
+import torch
 
-# Define paths
-DATA_PATH = Path("./data/wlasl-processed")
-VIDEO_PATH = DATA_PATH / "videos"
-ANNOTATION_FILE = Path("/home/adminjz/Project24-25/HandiSpeakV2/data/wlasl-processed/WLASL_v0.3.json")
+# Define a transformation pipeline
+preprocess = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
 
+def extract_frames(video_path, num_frames=8):
+    # Extract frames from video (this is a placeholder, you need to implement this)
+    frames = []
+    for i in range(num_frames):
+        frame = Image.open(f"frame_{i}.jpg")  # Replace with actual frame extraction
+        frames.append(preprocess(frame))
+    return torch.stack(frames)
 
-# Function to load metadata
-def load_metadata():
-    with open(ANNOTATION_FILE, "r") as f:
-        data = json.load(f)
-    # Print the structure to understand it
-    print("Metadata structure:", type(data))
-    if isinstance(data, list):
-        print("Example entry:", data[0])  # Print the first entry if it's a list
-    elif isinstance(data, dict):
-        print("Top-level keys:", data.keys())
-    return data
+def load_and_preprocess_data():
+    # Load the WLASL dataset
+    dataset = load_dataset("wlasl")
 
-# Function to process videos
-def process_videos(metadata):
-    for video_entry in metadata["videos"]:
-        video_file = VIDEO_PATH / video_entry["name"]
-        if not video_file.exists():
-            print(f"Video file {video_file} not found!")
-            continue
-        # Example: Extract and save frames
-        extract_frames(video_file, output_dir=DATA_PATH / "frames")
+    # Apply preprocessing to the dataset
+    def preprocess_dataset(example):
+        example['frames'] = extract_frames(example['video_path'])
+        return example
 
-# Function to extract frames
-def extract_frames(video_file, output_dir):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    cap = cv2.VideoCapture(str(video_file))
-    frame_count = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        # Save every 10th frame as an example
-        if frame_count % 10 == 0:
-            frame_path = output_dir / f"{video_file.stem}_frame_{frame_count}.jpg"
-            cv2.imwrite(str(frame_path), frame)
-        frame_count += 1
-    cap.release()
-
-# Main function
-def main():
-    print("Loading metadata...")
-    metadata = load_metadata()
-    print("Processing videos...")
-    process_videos(metadata)
-    print("Data preprocessing completed.")
-
-if __name__ == "__main__":
-    main()
+    dataset = dataset.map(preprocess_dataset)
+    dataset.set_format(type='torch', columns=['frames', 'label'])
+    return dataset
