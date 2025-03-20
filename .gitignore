@@ -1,6 +1,11 @@
 # Ignore data folder
 data/
-data
+
+# Ignore datasets folder
+datasets/
+
+# Ignore frames folder
+frames/
 
 # Ignore virtual environment
 venv/
