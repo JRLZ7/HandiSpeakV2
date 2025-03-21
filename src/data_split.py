@@ -1,13 +1,21 @@
+import cv2
 import os
-import shutil
+import json
+import numpy as np
 import random
 from tqdm import tqdm
+
+# Parameters
+desired_fps = 30
+desired_frames = 60
+frame_size = (224, 224)
+train_ratio = 0.8  # Train/validation split ratio
 
 # Dataset names (choose one at a time)
 dataset_name = "20_words"  # Change to "50_words", "100_words", or "200_words" as needed
 
 # Paths
-frames_dir = f"~/Projects/HandiSpeakV2/frames/{dataset_name}"
+metadata_path = f"~/Projects/HandiSpeakV2/datasets/{dataset_name}_metadata.json"
 train_dir = f"~/Projects/HandiSpeakV2/datasets/{dataset_name}/train"
 val_dir = f"~/Projects/HandiSpeakV2/datasets/{dataset_name}/val"
 
@@ -15,59 +23,92 @@ val_dir = f"~/Projects/HandiSpeakV2/datasets/{dataset_name}/val"
 os.makedirs(os.path.expanduser(train_dir), exist_ok=True)
 os.makedirs(os.path.expanduser(val_dir), exist_ok=True)
 
-# Train/Val split ratio
-train_ratio = 0.8
+# Load metadata
+with open(os.path.expanduser(metadata_path), "r") as file:
+    metadata = json.load(file)
 
-# Split data
-for word in tqdm(os.listdir(os.path.expanduser(frames_dir)), desc="Splitting data"):
-    print(f"Processing word: {word}")
-    word_path = os.path.expanduser(os.path.join(frames_dir, word))
-    if not os.path.isdir(word_path):
-        continue
+# Function to normalize frames to a fixed length
+def normalize_frames(frames):
+    frame_count = len(frames)
 
-    # Get list of all video frame folders for this word
-    video_folders = [f for f in os.listdir(word_path) if os.path.isdir(os.path.join(word_path, f))]
+    # Truncate or pad frames to match the desired count
+    if frame_count > desired_frames:
+        indices = np.linspace(0, frame_count - 1, desired_frames).astype(int)
+        frames = [frames[i] for i in indices]
+    elif frame_count < desired_frames:
+        # Pad with the last frame
+        pad_count = desired_frames - frame_count
+        frames.extend([frames[-1]] * pad_count)
 
-    # Shuffle the list for random splitting
-    random.shuffle(video_folders)
+    return frames
 
-    # Calculate the split point
-    split_point = int(len(video_folders) * train_ratio)
+# Frame extraction function
+def extract_and_save_frames(video_path, output_dir):
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    interval = max(1, int(fps / desired_fps))
 
-    # Split into train and validation
-    train_videos = video_folders[:split_point]
-    val_videos = video_folders[split_point:]
+    frames = []
+    count = 0
 
-    # Move training frames
-    for video in train_videos:
-        video_src = os.path.join(word_path, video)
-        video_dst = os.path.join(os.path.expanduser(train_dir), word, video)
-        os.makedirs(os.path.dirname(video_dst), exist_ok=True)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-        # Move each frame inside the video folder
-        for frame in os.listdir(video_src):
-            src_frame_path = os.path.join(video_src, frame)
-            dst_frame_path = os.path.join(video_dst, frame)
-            os.makedirs(os.path.dirname(dst_frame_path), exist_ok=True)
-            shutil.move(src_frame_path, dst_frame_path)
+        # Only process frames at the calculated interval
+        if count % interval == 0:
+            frame = cv2.resize(frame, frame_size)
+            frames.append(frame)
 
-        # Remove empty folder after moving frames
-        os.rmdir(video_src)
+        count += 1
 
-    # Move validation frames
-    for video in val_videos:
-        video_src = os.path.join(word_path, video)
-        video_dst = os.path.join(os.path.expanduser(val_dir), word, video)
-        os.makedirs(os.path.dirname(video_dst), exist_ok=True)
+    cap.release()
 
-        # Move each frame inside the video folder
-        for frame in os.listdir(video_src):
-            src_frame_path = os.path.join(video_src, frame)
-            dst_frame_path = os.path.join(video_dst, frame)
-            os.makedirs(os.path.dirname(dst_frame_path), exist_ok=True)
-            shutil.move(src_frame_path, dst_frame_path)
+    # Normalize the frames to ensure consistency
+    frames = normalize_frames(frames)
 
-        # Remove empty folder after moving frames
-        os.rmdir(video_src)
+    # Save normalized frames to the output directory
+    for i, frame in enumerate(frames):
+        frame_filename = f"frame_{i:04d}.jpg"
+        frame_path = os.path.join(output_dir, frame_filename)
+        cv2.imwrite(frame_path, frame)
 
-print("✅ Training and validation data split complete.")
+# Process each word and video
+for word, videos in tqdm(metadata.items(), desc="Splitting and Extracting Data"):
+    word_train_dir = os.path.expanduser(os.path.join(train_dir, word))
+    word_val_dir = os.path.expanduser(os.path.join(val_dir, word))
+    os.makedirs(word_train_dir, exist_ok=True)
+    os.makedirs(word_val_dir, exist_ok=True)
+
+    # Shuffle video list for random split
+    random.shuffle(videos)
+    split_point = int(len(videos) * train_ratio)
+    train_videos = videos[:split_point]
+    val_videos = videos[split_point:]
+
+    # Process training videos
+    for video_name in train_videos:
+        video_path = os.path.expanduser(f"~/Projects/HandiSpeakV2/data/WLASL/videos/{video_name}")
+        if not os.path.exists(video_path):
+            print(f"❌ Video not found: {video_path}")
+            continue
+
+        # Create video-specific directory within the word folder
+        video_output_dir = os.path.join(word_train_dir, video_name)
+        os.makedirs(video_output_dir, exist_ok=True)
+        extract_and_save_frames(video_path, video_output_dir)
+
+    # Process validation videos
+    for video_name in val_videos:
+        video_path = os.path.expanduser(f"~/Projects/HandiSpeakV2/data/WLASL/videos/{video_name}")
+        if not os.path.exists(video_path):
+            print(f"❌ Video not found: {video_path}")
+            continue
+
+        # Create video-specific directory within the word folder
+        video_output_dir = os.path.join(word_val_dir, video_name)
+        os.makedirs(video_output_dir, exist_ok=True)
+        extract_and_save_frames(video_path, video_output_dir)
+
+print("✅ Frame extraction and splitting complete!")

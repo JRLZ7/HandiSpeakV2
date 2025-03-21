@@ -1,6 +1,9 @@
 # Ignore data folder
 data/
 
+# Ignore models
+models/
+
 # Ignore datasets folder
 datasets/
 
