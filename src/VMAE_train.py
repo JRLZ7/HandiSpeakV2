@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 import os
 
 from data_pytorch import HandiSpeakDataset
-from model import HandiSpeakModel
+from VMAE_model import HandiSpeakModel
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
