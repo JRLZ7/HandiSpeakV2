@@ -44,10 +44,10 @@ with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=
             print("Right Hand Landmarks:")
             for i, landmark in enumerate(results.right_hand_landmarks.landmark):
                 print(f"  Landmark {i}: x={landmark.x}, y={landmark.y}, z={landmark.z}")
-        if results.pose_landmarks:
-            print("Pose Landmarks:")
-            for i, landmark in enumerate(results.pose_landmarks.landmark):
-                print(f"  Landmark {i}: x={landmark.x}, y={landmark.y}, z={landmark.z}")
+        # if results.pose_landmarks:
+        #     print("Pose Landmarks:")
+        #     for i, landmark in enumerate(results.pose_landmarks.landmark):
+        #         print(f"  Landmark {i}: x={landmark.x}, y={landmark.y}, z={landmark.z}")
 
         # Display the image
         cv2.imshow('Holistic Model', image)

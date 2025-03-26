@@ -66,7 +66,38 @@ def extract_keypoints(image, results):
     else:
         keypoints['right_hand'] = [{'x': 0.0, 'y': 0.0, 'z': 0.0} for _ in range(21)]
 
-    return keypoints
+    # Flatten and trim keypoints to match the expected size (354)
+    flattened_keypoints = []
+    flattened_keypoints.extend([kp['x'] for kp in keypoints['face']])
+    flattened_keypoints.extend([kp['y'] for kp in keypoints['face']])
+    flattened_keypoints.extend([kp['z'] for kp in keypoints['face']])
+
+    flattened_keypoints.extend([kp['x'] for kp in keypoints['pose']])
+    flattened_keypoints.extend([kp['y'] for kp in keypoints['pose']])
+    flattened_keypoints.extend([kp['z'] for kp in keypoints['pose']])
+
+    flattened_keypoints.extend([kp['x'] for kp in keypoints['left_hand']])
+    flattened_keypoints.extend([kp['y'] for kp in keypoints['left_hand']])
+    flattened_keypoints.extend([kp['z'] for kp in keypoints['left_hand']])
+
+    flattened_keypoints.extend([kp['x'] for kp in keypoints['right_hand']])
+    flattened_keypoints.extend([kp['y'] for kp in keypoints['right_hand']])
+    flattened_keypoints.extend([kp['z'] for kp in keypoints['right_hand']])
+
+    # If the number of keypoints exceeds 354, trim the excess
+    if len(flattened_keypoints) > 354:
+        flattened_keypoints = flattened_keypoints[:354]
+
+    # Rebuild the keypoint structure (in the original format)
+    trimmed_keypoints = {
+        'face': [{'x': flattened_keypoints[i], 'y': flattened_keypoints[i + 1], 'z': flattened_keypoints[i + 2]} for i in range(0, 72 * 3, 3)],
+        'pose': [{'x': flattened_keypoints[i], 'y': flattened_keypoints[i + 1], 'z': flattened_keypoints[i + 2]} for i in range(72 * 3, 76 * 3, 3)],
+        'left_hand': [{'x': flattened_keypoints[i], 'y': flattened_keypoints[i + 1], 'z': flattened_keypoints[i + 2]} for i in range(76 * 3, 97 * 3, 3)],
+        'right_hand': [{'x': flattened_keypoints[i], 'y': flattened_keypoints[i + 1], 'z': flattened_keypoints[i + 2]} for i in range(97 * 3, 118 * 3, 3)]
+    }
+
+    return trimmed_keypoints
+
 
 # Create keypoints directory
 os.makedirs('keypoints', exist_ok=True)

@@ -7,7 +7,7 @@ from data_mp_pytorch import create_dataloader
 from LSTM_model import ASLClassifier
 
 # Hyperparameters
-input_size = 360  # Adjust based on actual input shape
+input_size = 360
 hidden_size = 128
 num_layers = 2
 num_classes = 20
@@ -19,11 +19,9 @@ learning_rate = 0.001
 model = ASLClassifier(input_size, hidden_size, num_layers, num_classes)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
 
 # Prepare data loaders
-data_dir = 'keypoints_aug'
+data_dir = 'keypoints'
 train_loader = create_dataloader(f"{data_dir}/train", batch_size)
 val_loader = create_dataloader(f"{data_dir}/val", batch_size)
 
@@ -38,13 +36,7 @@ for epoch in range(num_epochs):
 
     # Training Phase
     for inputs, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Training"):
-        inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        tqdm.write(f"Input shape from DataLoader: {inputs.shape}")
-        tqdm.write(f"Input shape from DataLoader: {inputs.shape}")
-        tqdm.write(f"Expected input size: {input_size}")
-        if inputs.shape[2] != input_size:
-            tqdm.write(f"Warning: Mismatch between model input size ({input_size}) and actual data size ({inputs.shape[2]})")
         outputs = model(inputs)
         loss = criterion(outputs, labels)
         loss.backward()
@@ -67,7 +59,6 @@ for epoch in range(num_epochs):
 
     with torch.no_grad():
         for inputs, labels in tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Validation"):
-            inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             _, predicted = torch.max(outputs, 1)
@@ -82,8 +73,8 @@ for epoch in range(num_epochs):
     if val_acc > best_val_acc:
         best_val_acc = val_acc
         torch.save(model.state_dict(), 'models/best_asl_lstm_model.pth')
-        tqdm.write(f"✅ New best model saved with validation accuracy: {best_val_acc:.2f}%")
+        print(f"✅ New best model saved with validation accuracy: {best_val_acc:.2f}%")
 
-    tqdm.write(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
 
-tqdm.write("Training complete!")
+print("Training complete!")
