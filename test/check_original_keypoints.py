@@ -44,3 +44,5 @@ def check_keypoint_lengths(data_dir):
 
 # Run the script for the original data directory
 check_keypoint_lengths('/home/jason/Projects/HandiSpeakV2/keypoints')
+check_keypoint_lengths('/home/jason/Projects/HandiSpeakV2/keypoints_aug/train')
+check_keypoint_lengths('/home/jason/Projects/HandiSpeakV2/keypoints_aug/val')

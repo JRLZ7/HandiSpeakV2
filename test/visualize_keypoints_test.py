@@ -4,6 +4,7 @@ import os
 from tqdm import tqdm
 import mediapipe as mp
 import time
+import numpy as np
 
 mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
@@ -33,18 +34,32 @@ def visualize_keypoints(json_path, video_dir):
         print(f"Visualizing video: {video_id} (Original ID: {original_id})")
 
         cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Extract frame indices
-        frame_indices = list(range(len(data[video_id])))
+        # Determine frame interval to get approximately 20 frames
+        if total_frames < 20:
+            frame_interval = 1
+        else:
+            frame_interval = max(total_frames // 20, 1)
+        frame_indices = list(range(0, total_frames, frame_interval))[:20]
+
+        print(f"Total frames: {total_frames}, Frame indices: {frame_indices}")
 
         for frame_number in frame_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
             ret, frame = cap.read()
             if not ret:
                 print(f"[ERROR] Unable to read frame {frame_number} from {video_path}")
                 break
 
-            # Retrieve keypoints for the current frame
-            frame_keypoints = data[video_id][frame_number]
+            # Check if video data is a list (for augmented data) or a dictionary (for original data)
+            video_data = data[video_id]
+            if isinstance(video_data, list):
+                if frame_number >= len(video_data):
+                    continue
+                frame_keypoints = video_data[frame_number]
+            else:
+                frame_keypoints = video_data.get(str(frame_number), {})
 
             # Draw face keypoints
             if 'face' in frame_keypoints:
@@ -70,9 +85,9 @@ def visualize_keypoints(json_path, video_dir):
                     x, y = int(kp['x'] * frame.shape[1]), int(kp['y'] * frame.shape[0])
                     cv2.circle(frame, (x, y), 4, (0, 255, 255), -1)
 
-            # Display the frame
+            # Display the frame with a delay for better visualization
             cv2.imshow(f"Video {video_id}", frame)
-            if cv2.waitKey(100) & 0xFF == ord('q'):  # Wait for a key press
+            if cv2.waitKey(50) & 0xFF == ord('q'):  # 50 ms delay for slower playback
                 break
 
         cap.release()
@@ -81,6 +96,6 @@ def visualize_keypoints(json_path, video_dir):
     print("✅ Visualization complete!")
 
 # Usage example
-json_path = "keypoints/before.json"  # Update with your file path
+json_path = "keypoints_aug/accident.json"  # Update with your file path
 video_dir = "data/WLASL/videos"  # Update with your video directory
 visualize_keypoints(json_path, video_dir)

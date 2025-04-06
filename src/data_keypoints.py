@@ -12,67 +12,86 @@ mp_holistic = mp.solutions.holistic
 FACE_LANDMARKS = [
     70, 63, 105, 66, 107, 46, 53, 52, 65, 55,  # Left eyebrow
     336, 296, 334, 293, 300, 285, 295, 282, 283, 276,  # Right eyebrow
-    468, 33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246,  # Left eye
-    473, 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398,  # Right eye
+    33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246,  # Left eye
+    362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398,  # Right eye
     78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308,  # Upper lip
     95, 88, 178, 87, 14, 317, 402, 318, 324  # Lower lip
+
+    # 468, 473 removed since they aren't picked up in any json files.
 ]
 POSE_LANDMARKS = [11, 12, 13, 14]  # Upper torso and arms
-
-# Frame interval configuration
 NUM_FRAMES = 20
 
-# Extract keypoints from MediaPipe results
+def round_coord(coord):
+    return round(coord, 5)
+
 def extract_keypoints(image, results):
     keypoints = {}
+    missing = {}
 
-    # Face keypoints
+    # FACE
     if results.face_landmarks:
+        face_landmarks = results.face_landmarks.landmark
         keypoints['face'] = [
-            {'x': results.face_landmarks.landmark[i].x,
-             'y': results.face_landmarks.landmark[i].y,
-             'z': results.face_landmarks.landmark[i].z}
-            for i in FACE_LANDMARKS if i < len(results.face_landmarks.landmark)
+            {
+                'id': i,
+                'x': round_coord(face_landmarks[i].x),
+                'y': round_coord(face_landmarks[i].y),
+                'z': round_coord(face_landmarks[i].z)
+            }
+            for i in FACE_LANDMARKS if i < len(face_landmarks)
         ]
     else:
-        keypoints['face'] = [{'x': 0.0, 'y': 0.0, 'z': 0.0} for _ in range(len(FACE_LANDMARKS))]
+        keypoints['face'] = [
+            {'id': i, 'x': 0.0, 'y': 0.0, 'z': 0.0}
+            for i in FACE_LANDMARKS
+        ]
 
-    # Pose keypoints
+
+    # POSE
     if results.pose_landmarks:
-        keypoints['pose'] = [
-            {'x': results.pose_landmarks.landmark[i].x,
-             'y': results.pose_landmarks.landmark[i].y,
-             'z': results.pose_landmarks.landmark[i].z}
-            for i in POSE_LANDMARKS if i < len(results.pose_landmarks.landmark)
-        ]
+        keypoints['pose'] = [{'id': i,
+                              'x': round_coord(results.pose_landmarks.landmark[i].x),
+                              'y': round_coord(results.pose_landmarks.landmark[i].y),
+                              'z': round_coord(results.pose_landmarks.landmark[i].z)}
+                             for i in POSE_LANDMARKS]
+        missing['pose'] = False
     else:
-        keypoints['pose'] = [{'x': 0.0, 'y': 0.0, 'z': 0.0} for _ in range(len(POSE_LANDMARKS))]
+        keypoints['pose'] = [{'id': i, 'x': 0.0, 'y': 0.0, 'z': 0.0} for i in POSE_LANDMARKS]
+        missing['pose'] = True
 
-    # Left hand keypoints
+    # LEFT HAND
     if results.left_hand_landmarks:
-        keypoints['left_hand'] = [
-            {'x': landmark.x, 'y': landmark.y, 'z': landmark.z}
-            for landmark in results.left_hand_landmarks.landmark
-        ]
+        keypoints['left_hand'] = [{'id': idx,
+                                   'x': round_coord(lm.x),
+                                   'y': round_coord(lm.y),
+                                   'z': round_coord(lm.z)}
+                                  for idx, lm in enumerate(results.left_hand_landmarks.landmark)]
+        missing['left_hand'] = False
     else:
-        keypoints['left_hand'] = [{'x': 0.0, 'y': 0.0, 'z': 0.0} for _ in range(21)]
+        keypoints['left_hand'] = [{'id': i, 'x': 0.0, 'y': 0.0, 'z': 0.0} for i in range(21)]
+        missing['left_hand'] = True
 
-    # Right hand keypoints
+    # RIGHT HAND
     if results.right_hand_landmarks:
-        keypoints['right_hand'] = [
-            {'x': landmark.x, 'y': landmark.y, 'z': landmark.z}
-            for landmark in results.right_hand_landmarks.landmark
-        ]
+        keypoints['right_hand'] = [{'id': idx,
+                                    'x': round_coord(lm.x),
+                                    'y': round_coord(lm.y),
+                                    'z': round_coord(lm.z)}
+                                   for idx, lm in enumerate(results.right_hand_landmarks.landmark)]
+        missing['right_hand'] = False
     else:
-        keypoints['right_hand'] = [{'x': 0.0, 'y': 0.0, 'z': 0.0} for _ in range(21)]
+        keypoints['right_hand'] = [{'id': i, 'x': 0.0, 'y': 0.0, 'z': 0.0} for i in range(21)]
+        missing['right_hand'] = True
 
+    keypoints['missing'] = missing
     return keypoints
 
-# Create keypoints directory
+# Save directory
 os.makedirs('keypoints', exist_ok=True)
 
 # Load metadata
-metadata_path = '/home/jason/Projects/HandiSpeakV2/datasets/top_20_metadata.json'  # Replace with your actual metadata file
+metadata_path = '/home/jason/Projects/HandiSpeakV2/datasets/top_50_metadata.json'
 with open(metadata_path, 'r') as f:
     metadata = json.load(f)
 
@@ -80,50 +99,45 @@ batch_keypoints = {}
 
 with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
     for word, instances in tqdm(metadata.items(), desc="Extracting keypoints"):
+
+        json_path = os.path.join('keypoints', f'{word}.json')
+        if os.path.exists(json_path):
+            print(f"⏩ Skipping {word} (already processed)")
+            continue
+        
         word_keypoints = {}
         for instance in instances:
             video_path = f"data/WLASL/videos/{instance}"
-
             if not os.path.exists(video_path):
-                print(f"Error: Could not find video file {video_path}")
+                print(f"❌ Video not found: {video_path}")
                 continue
 
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                print(f"Error: Could not open video file {video_path}")
+                print(f"❌ Cannot open video: {video_path}")
                 continue
 
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             frame_interval = max(1, frame_count // NUM_FRAMES)
 
             video_keypoints = []
-
             frame_idx = 0
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
-
-                # Process only every frame_interval frame
                 if frame_idx % frame_interval == 0:
                     image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     image.flags.writeable = False
                     results = holistic.process(image)
-
-                    # Extract and store keypoints
                     keypoints = extract_keypoints(image, results)
                     video_keypoints.append(keypoints)
-
                 frame_idx += 1
 
             cap.release()
-
-            # Add keypoints to the word dictionary
             video_id = os.path.splitext(os.path.basename(video_path))[0]
             word_keypoints[video_id] = video_keypoints
 
-        # Save the batched keypoints as one JSON file per word
-        json_path = os.path.join('keypoints', f'{word}.json')
         with open(json_path, 'w') as f:
             json.dump(word_keypoints, f)
 

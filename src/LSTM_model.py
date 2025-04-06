@@ -1,89 +1,48 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from data_mp_pytorch import create_dataloader
-from LSTM_model import ASLClassifier
 
-# Hyperparameters
-input_size = 360  # Adjust based on actual input shape
-hidden_size = 128
-num_layers = 2
-num_classes = 20
-batch_size = 4
-num_epochs = 20
-learning_rate = 0.001
+class ASLClassifier(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+        super(ASLClassifier, self).__init__()
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True
+        )
+        self.fc = nn.Linear(256 * 2, num_classes)  # correct
 
-# Initialize model, loss function, and optimizer
-model = ASLClassifier(input_size, hidden_size, num_layers, num_classes)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
 
-# Prepare data loaders
-data_dir = 'keypoints_aug'
-train_loader = create_dataloader(f"{data_dir}/train", batch_size)
-val_loader = create_dataloader(f"{data_dir}/val", batch_size)
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        # print(f"[DEBUG] LSTM output shape: {out.shape}")  # [batch, seq_len, hidden*2]
+        out = out[:, -1, :]  # Get the output from the last frame
+        out = self.fc(out)   # [batch, num_classes]
+        return out
 
-best_val_acc = 0.0  # Track the best validation accuracy
 
-# Training loop
-for epoch in range(num_epochs):
-    model.train()
-    total_loss = 0
-    correct = 0
-    total = 0
+if __name__ == "__main__":
+    import torch
 
-    # Training Phase
-    for inputs, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Training"):
-        inputs, labels = inputs.to(device), labels.to(device)
-        optimizer.zero_grad()
-        tqdm.write(f"Input shape from DataLoader: {inputs.shape}")
-        tqdm.write(f"Input shape from DataLoader: {inputs.shape}")
-        tqdm.write(f"Expected input size: {input_size}")
-        if inputs.shape[2] != input_size:
-            tqdm.write(f"Warning: Mismatch between model input size ({input_size}) and actual data size ({inputs.shape[2]})")
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Hyperparameters
+    input_size = 354  # Each frame has 354 keypoints (x, y, z flattened)
+    hidden_size = 128
+    num_layers = 2
+    
+    # PLEASE CHANGE IF UR DOING DIFFERENT DATASET !!!!!!!!!!!!!!!!!!
+    num_classes = 50
 
-        # Calculate accuracy
-        _, predicted = torch.max(outputs, 1)
-        correct += (predicted == labels).sum().item()
-        total += labels.size(0)
-        total_loss += loss.item()
+    sequence_length = 20  # 20 frames per video
+    batch_size = 1
 
-    train_acc = 100 * correct / total
-    train_loss = total_loss / len(train_loader)
+    model = ASLClassifier(input_size, hidden_size, num_layers, num_classes).to(device)
 
-    # Validation Phase
-    model.eval()
-    val_correct = 0
-    val_total = 0
-    val_loss = 0
+    # Dummy input
+    dummy_input = torch.randn(batch_size, sequence_length, input_size).to(device)
 
-    with torch.no_grad():
-        for inputs, labels in tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Validation"):
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            _, predicted = torch.max(outputs, 1)
-            val_correct += (predicted == labels).sum().item()
-            val_total += labels.size(0)
-            val_loss += loss.item()
-
-    val_acc = 100 * val_correct / val_total
-    val_loss /= len(val_loader)
-
-    # Save the best model
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
-        torch.save(model.state_dict(), 'models/best_asl_lstm_model.pth')
-        tqdm.write(f"✅ New best model saved with validation accuracy: {best_val_acc:.2f}%")
-
-    tqdm.write(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
-
-tqdm.write("Training complete!")
+    # Forward pass
+    output = model(dummy_input)
+    print(f"Output shape: {output.shape}")  # Expected: (1, 20)

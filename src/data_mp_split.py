@@ -18,6 +18,11 @@ os.makedirs(val_dir, exist_ok=True)
 json_files = [f for f in os.listdir(data_dir) if f.endswith('.json')]
 
 for json_file in json_files:
+    
+    if os.path.exists(os.path.join(train_dir, json_file)) and os.path.exists(os.path.join(val_dir, json_file)):
+        print(f"⏩ Skipping {json_file} (already split)")
+        continue
+    
     try:
         # Load the JSON file
         file_path = os.path.join(data_dir, json_file)
