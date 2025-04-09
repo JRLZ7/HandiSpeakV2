@@ -12,7 +12,7 @@ frame_size = (224, 224)
 train_ratio = 0.8  # Train/validation split ratio
 
 # Dataset names (choose one at a time)
-dataset_name = "20_words"  # Change to "50_words", "100_words", or "200_words" as needed
+dataset_name = "top_50_metadata"  # Change to "50_words", "100_words", or "200_words" as needed
 
 # Paths
 metadata_path = f"~/Projects/HandiSpeakV2/datasets/{dataset_name}_metadata.json"

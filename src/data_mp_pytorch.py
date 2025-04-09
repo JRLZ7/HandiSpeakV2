@@ -76,12 +76,12 @@ def create_dataloader(data_dir, batch_size=8, shuffle=True, word_to_index=None):
 
 # Example usage for debugging
 if __name__ == '__main__':
-    word_paths = glob('keypoints_aug/train/*.json')
+    word_paths = glob('keypoints_aug_50/train/*.json')
     all_words = [os.path.splitext(os.path.basename(p))[0] for p in word_paths]
     word_to_index = {word: idx for idx, word in enumerate(sorted(set(all_words)))}
 
-    train_dataset = KeypointDataset('keypoints_aug/train', word_to_index=word_to_index)
-    val_dataset = KeypointDataset('keypoints_aug/val', word_to_index=word_to_index)
+    train_dataset = KeypointDataset('keypoints_aug_50/train', word_to_index=word_to_index)
+    val_dataset = KeypointDataset('keypoints_aug_50/val', word_to_index=word_to_index)
 
     train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=8)

@@ -6,16 +6,17 @@ from tqdm import tqdm
 from transformers import VideoMAEForVideoClassification
 import torchvision.transforms as transforms
 import os
+import matplotlib.pyplot as plt
 
 from data_pytorch import HandiSpeakDataset
-from VMAE.VMAE_model import HandiSpeakModel
+from VMAE_model import HandiSpeakModel
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # Hyperparameters
-num_classes = 20
+num_classes = 50
 num_epochs = 10
 learning_rate = 1e-4
 batch_size = 4
@@ -35,11 +36,17 @@ transform = transforms.Compose([
 ])
 
 # Datasets and DataLoaders
-train_dataset = HandiSpeakDataset("~/Projects/HandiSpeakV2/datasets/20_words/train", transform=transform)
-val_dataset = HandiSpeakDataset("~/Projects/HandiSpeakV2/datasets/20_words/val", transform=transform)
+train_dataset = HandiSpeakDataset("~/Projects/HandiSpeakV2/datasets/top_50_metadata/train", transform=transform)
+val_dataset = HandiSpeakDataset("~/Projects/HandiSpeakV2/datasets/top_50_metadata/val", transform=transform)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+
+train_accs = []
+val_accs = []
+train_losses = []
+val_losses = []
+
 
 # Training function
 def train_epoch(epoch):
@@ -68,6 +75,11 @@ def train_epoch(epoch):
 
     epoch_loss = running_loss / len(train_loader)
     epoch_acc = 100 * correct / total
+    train_losses.append(epoch_loss)
+    train_accs.append(epoch_acc)
+    val_losses.append(val_losses)
+    val_accs.append(val_acc)
+
     print(f"Training Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}%")
 
 # Validation function
@@ -111,3 +123,23 @@ for epoch in range(num_epochs):
         print(f"✅ New best model saved with accuracy: {best_acc:.2f}%")
 
 print("Training complete!")
+
+# Accuracy plot
+plt.figure()
+plt.plot(train_accs, label='Train Accuracy')
+plt.plot(val_accs, label='Val Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy (%)')
+plt.legend()
+plt.title('Validation Accuracy - VideoMAE')
+plt.savefig(os.path.join(model_dir, "VMAE_accuracy_plot.png"))
+
+# Loss plot
+plt.figure()
+plt.plot(train_losses, label='Train Loss')
+plt.plot(val_losses, label='Val Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.title('Training Loss - VideoMAE')
+plt.savefig(os.path.join(model_dir, "VMAE_loss_plot.png"))

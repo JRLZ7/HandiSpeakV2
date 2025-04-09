@@ -23,7 +23,7 @@ class HandiSpeakModel(nn.Module):
 
 # Example usage
 if __name__ == "__main__":
-    num_classes = 20  # Adjust according to your dataset
+    num_classes = 50  # Adjust according to your dataset
     model = HandiSpeakModel(num_classes)
     model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     

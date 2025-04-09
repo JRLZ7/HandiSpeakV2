@@ -18,8 +18,8 @@ LEARNING_RATE = 1e-3
 NUM_CLASSES = 50
 
 # Load dataset
-train_loader, word_to_index = create_dataloader(data_dir="keypoints_aug/train", batch_size=BATCH_SIZE)
-val_loader, _ = create_dataloader(data_dir="keypoints_aug/val", batch_size=BATCH_SIZE, shuffle=False, word_to_index=word_to_index)
+train_loader, word_to_index = create_dataloader(data_dir="keypoints_aug_50/train", batch_size=BATCH_SIZE)
+val_loader, _ = create_dataloader(data_dir="keypoints_aug_50/val", batch_size=BATCH_SIZE, shuffle=False, word_to_index=word_to_index)
 
 # Initialize model, loss, and optimizer
 model = ASLClassifier(input_size=354, hidden_size=256, num_layers=2, num_classes=NUM_CLASSES).to(device)
@@ -136,6 +136,9 @@ cm = confusion_matrix(all_labels, all_preds)
 fig, ax = plt.subplots(figsize=(12, 10))  # smaller figsize for 50 classes
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(word_to_index.keys()))
 disp.plot(xticks_rotation=90, ax=ax, colorbar=True)
+
+np.save("models/LSTM_preds.npy", np.array(all_preds))
+np.save("models/LSTM_labels.npy", np.array(all_labels))
 
 # PLEASE CHANGE WITH THE NUMBER OF WORDS YOU HAVE
 plt.title("Confusion Matrix (50 Words)")

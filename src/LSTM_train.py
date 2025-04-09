@@ -127,6 +127,9 @@ with torch.no_grad():
         all_preds.extend(predicted.cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
+np.save("models/LSTM_preds.npy", np.array(all_preds))
+np.save("models/LSTM_labels.npy", np.array(all_labels))
+
 cm = confusion_matrix(all_labels, all_preds)
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=word_to_index.keys())
 disp.plot(xticks_rotation=90)
