@@ -13,6 +13,9 @@ frames/
 # Ignore virtual environment
 venv/
 
+# Ignore CTC synth sentences
+synthetic_sentences_50/
+
 # Ignore Python bytecode
 __pycache__/
 *.pyc
