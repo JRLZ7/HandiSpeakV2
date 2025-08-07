@@ -3,7 +3,7 @@ import json
 import random
 
 # List of dataset directories to process
-datasets = ["keypoints_aug_20", "keypoints_aug_50", "keypoints_aug_80"]
+datasets = ["keypoints_aug_50", "keypoints_aug_100","keypoints_aug_150", "keypoints_aug_200"]
 split_ratio = 0.8  # 80% train, 20% val
 
 for dataset_dir in datasets:

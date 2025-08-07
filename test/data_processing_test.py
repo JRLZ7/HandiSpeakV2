@@ -19,9 +19,10 @@ print(f"Loaded {len(missing_videos)} missing videos from {missing_videos_path}")
 
 # Load word lists from individual JSON files
 word_files = {
-    "top_20": "~/Projects/HandiSpeakV2/datasets/top_20_words.json",
     "top_50": "~/Projects/HandiSpeakV2/datasets/top_50_words.json",
-    "top_80": "~/Projects/HandiSpeakV2/datasets/top_80_words.json"
+    "top_100": "~/Projects/HandiSpeakV2/datasets/top_100_words.json",
+    "top_150": "~/Projects/HandiSpeakV2/datasets/top_150_words.json",
+    "top_200": "~/Projects/HandiSpeakV2/datasets/top_200_words.json",
 }
 
 # Function to load words from a JSON file
@@ -65,7 +66,7 @@ def extract_words_metadata(word_list):
 
     return extracted_data
 
-# Generate datasets for 20, 50, and 80 words
+# Generate datasets for "N" words
 for name, file_path in word_files.items():
     words = load_words(file_path)
     dataset = extract_words_metadata(words)

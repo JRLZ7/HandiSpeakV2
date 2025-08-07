@@ -91,7 +91,7 @@ def extract_keypoints(image, results):
 os.makedirs('keypoints', exist_ok=True)
 
 # Load metadata
-metadata_path = '/home/jason/Projects/HandiSpeakV2/datasets/top_80_metadata.json'
+metadata_path = '/home/jason/Projects/HandiSpeakV2/datasets/top_200_metadata.json'
 with open(metadata_path, 'r') as f:
     metadata = json.load(f)
 

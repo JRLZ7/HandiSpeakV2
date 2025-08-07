@@ -10,6 +10,14 @@ datasets/
 # Ignore frames folder
 frames/
 
+# Ignore keypoints
+keypoints/
+keypoints_aug/
+keypoints_aug_50/
+keypoints_aug_100/
+keypoints_aug_150/
+keypoints_aug_200/
+
 # Ignore virtual environment
 venv/
 

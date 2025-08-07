@@ -5,9 +5,10 @@ from pathlib import Path
 
 # Mapping: metadata file -> destination folder
 word_sets = {
-    "/home/jason/Projects/HandiSpeakV2/datasets/top_20_words.json": "keypoints_aug_20",
     "/home/jason/Projects/HandiSpeakV2/datasets/top_50_words.json": "keypoints_aug_50",
-    "/home/jason/Projects/HandiSpeakV2/datasets/top_80_words.json": "keypoints_aug_80",
+    "/home/jason/Projects/HandiSpeakV2/datasets/top_100_words.json": "keypoints_aug_100",
+    "/home/jason/Projects/HandiSpeakV2/datasets/top_150_words.json": "keypoints_aug_150",
+    "/home/jason/Projects/HandiSpeakV2/datasets/top_200_words.json": "keypoints_aug_200"
 }
 
 # Source directory
@@ -31,4 +32,4 @@ for word_file, dest_folder in word_sets.items():
         else:
             print(f"⚠️ Missing: {src_file}")
 
-print("✅ Done organizing word JSONs into 20/50/80 folders.")
+print("✅ Done organizing word JSONs into 50/100/150/200 folders.")

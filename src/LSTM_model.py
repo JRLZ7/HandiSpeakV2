@@ -33,7 +33,7 @@ if __name__ == "__main__":
     num_layers = 2
     
     # PLEASE CHANGE IF UR DOING DIFFERENT DATASET !!!!!!!!!!!!!!!!!!
-    num_classes = 80
+    num_classes = 100
 
     sequence_length = 20  # 20 frames per video
     batch_size = 1

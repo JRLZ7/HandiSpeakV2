@@ -14,12 +14,19 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Hyperparameters
 NUM_EPOCHS = 20
 BATCH_SIZE = 8
-LEARNING_RATE = 1e-3
-NUM_CLASSES = 20
+LEARNING_RATE = 2.8e-3 # change for results
+# 1, 2, 2.45, 2.87
+NUM_CLASSES = 100
+
+# TWO HUNDRED WORDS = 86.20% // 38.25%
+# ONE FIFTY WORDS = 92.53% // 70.87%
+# ONE HUNDRED WORDS = 93.6% (91.4) // 89.80%
+# FIFTY WORDS = 94.00%
+
 
 # Load dataset
-train_loader, word_to_index = create_dataloader(data_dir="keypoints_aug/train", batch_size=BATCH_SIZE)
-val_loader, _ = create_dataloader(data_dir="keypoints_aug/val", batch_size=BATCH_SIZE, shuffle=False, word_to_index=word_to_index)
+train_loader, word_to_index = create_dataloader(data_dir="keypoints_aug_100/train", batch_size=BATCH_SIZE)
+val_loader, _ = create_dataloader(data_dir="keypoints_aug_100/val", batch_size=BATCH_SIZE, shuffle=False, word_to_index=word_to_index)
 
 # Initialize model, loss, and optimizer
 model = ASLClassifier(input_size=354, hidden_size=256, num_layers=2, num_classes=NUM_CLASSES).to(device)
@@ -82,14 +89,19 @@ for epoch in range(NUM_EPOCHS):
     val_losses.append(val_loss / len(val_loader))
 
     # Save best model
+    # Save best model info but delay saving
     if val_accuracy > best_val_acc:
         best_val_acc = val_accuracy
-        os.makedirs("models", exist_ok=True)
-        torch.save(model.state_dict(), f"models/best_lstm_epoch{epoch+1}_acc{val_accuracy:.2f}.pt")
+        best_model_state = model.state_dict()
+        best_epoch = epoch + 1
 
     print(f"Epoch {epoch+1}/{NUM_EPOCHS} | Train Loss: {running_loss/len(train_loader):.4f}, "
           f"Train Acc: {100. * correct / total:.2f}% | Val Loss: {val_loss/len(val_loader):.4f}, "
           f"Val Acc: {val_accuracy:.2f}%")
+
+os.makedirs("100_results", exist_ok=True)
+torch.save(best_model_state, f"models/best_lstm_epoch{best_epoch}_acc{best_val_acc:.2f}.pt")
+print(f"✅ Saved best model from epoch {best_epoch} with val acc {best_val_acc:.2f}%")
 
 # Plot accuracy
 plt.figure()
@@ -98,8 +110,8 @@ plt.plot(val_accs, label='Val Accuracy')
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy (%)')
 plt.legend()
-plt.title('Accuracy over Epochs')
-plt.savefig('models/accuracy_plot.png')
+plt.title('Accuracy over Epochs (100 words)')
+plt.savefig('100_results/LSTM_accuracy_plot.png')
 
 # Plot loss
 plt.figure()
@@ -108,8 +120,8 @@ plt.plot(val_losses, label='Val Loss')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
-plt.title('Loss over Epochs')
-plt.savefig('models/loss_plot.png')
+plt.title('Loss over Epochs (100 words)')
+plt.savefig('100_results/LSTM_loss_plot.png')
 
 # Confusion Matrix
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
@@ -127,11 +139,31 @@ with torch.no_grad():
         all_preds.extend(predicted.cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
-np.save("models/LSTM_preds.npy", np.array(all_preds))
-np.save("models/LSTM_labels.npy", np.array(all_labels))
 
 cm = confusion_matrix(all_labels, all_preds)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=word_to_index.keys())
-disp.plot(xticks_rotation=90)
-plt.title("Confusion Matrix")
-plt.savefig("models/confusion_matrix.png")
+fig, ax = plt.subplots(figsize=(15, 14))  # 🔼 More space for 100 words
+
+# Use class numbers 1–100 instead of word names
+display_labels = list(range(1, len(word_to_index) + 1))
+
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=display_labels)
+disp.plot(
+    ax=ax,
+    xticks_rotation=90,
+    include_values=False,
+    colorbar=True,
+    cmap="viridis"
+)
+
+# 🔼 Increase font sizes
+plt.xticks(fontsize=90)
+plt.yticks(fontsize=90)
+ax.tick_params(axis='both', which='major', labelsize=7)
+ax.set_xlabel("Predicted Label", fontsize=23)
+ax.set_ylabel("True Label", fontsize=23)
+
+# 🔼 Bigger, clearer title
+plt.title("Confusion Matrix (100 Words)", fontsize=50)
+
+plt.tight_layout()
+plt.savefig("100_results/LSTM_confusion_matrix.png", dpi=300)
