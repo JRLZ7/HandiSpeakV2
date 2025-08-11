@@ -3,6 +3,7 @@ data/
 
 # Ignore models
 models/
+spare_models/
 
 # Ignore datasets folder
 datasets/
@@ -14,6 +15,8 @@ frames/
 keypoints/
 keypoints_aug/
 keypoints_aug_50/
+keypoints_aug_50/train/
+keypoints_aug_50/val/
 keypoints_aug_100/
 keypoints_aug_150/
 keypoints_aug_200/

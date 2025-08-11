@@ -29,7 +29,7 @@ if __name__ == "__main__":
     
     # Hyperparameters
     input_size = 354  # Each frame has 354 keypoints (x, y, z flattened)
-    hidden_size = 128
+    hidden_size = 256
     num_layers = 2
     
     # PLEASE CHANGE IF UR DOING DIFFERENT DATASET !!!!!!!!!!!!!!!!!!

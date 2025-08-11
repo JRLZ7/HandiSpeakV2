@@ -4,8 +4,12 @@ import random
 import copy
 from tqdm import tqdm
 
-def augment_keypoints(keypoints, noise_level=0.01):
+# for future reference, if this works, use this over non-test version.
+
+def augment_keypoints(keypoints, noise_level=0.01, translate_range=0.05):
     augmented = copy.deepcopy(keypoints)
+    x_translation = random.uniform(-translate_range, translate_range)
+
     for frame in augmented:
         for part in frame.keys():
             if isinstance(frame[part], list):
@@ -14,6 +18,9 @@ def augment_keypoints(keypoints, noise_level=0.01):
                         point['x'] += random.uniform(-noise_level, noise_level)
                         point['y'] += random.uniform(-noise_level, noise_level)
                         point['z'] += random.uniform(-noise_level, noise_level)
+                        
+                        # ✅ Add horizontal translation
+                        point['x'] += x_translation
     return augmented
 
 def augment_videos(word, input_dir, output_dir, target_count=50):

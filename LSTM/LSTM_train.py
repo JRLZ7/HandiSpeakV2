@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from LSTM_model import ASLClassifier
-from data_mp_pytorch import create_dataloader
+from LSTM.LSTM_data import create_dataloader
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
