@@ -1,23 +1,21 @@
 import os
+import json
 import argparse
 import random
 from typing import List
+import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from ctc_data import FixedSentenceJSONDataset, ctc_collate_fixed
+# Keep your module names as-is
+from ctc50.ctc_data import FixedSentenceJSONDataset, ctc_collate_fixed
 from ctc_model import TSFCTCEncoder
 
 # how to run:
-# python ctc50_train.py \
-#   --train_root keypoints_aug_50/train \
-#   --val_root   keypoints_aug_50/val \
-#   --vocab_json vocab_50.json \
-#   --epochs 15 --batch_size 8 --lr 1e-4 \
-#   --num_trials 10 --eval_sentences 500
+# python ctc50/ctc_train.py --train_root keypoints_aug_50/train --val_root   keypoints_aug_50/val --vocab_json ctc50/vocab_50.json --epochs 10 --batch_size 8 --lr 4.15e-4 --num_trials 10 --eval_sentences 500 --valhard --print_samples 5
 
 # ---------- Utils: decoding + WER ----------
 
@@ -58,6 +56,33 @@ def wer_percent(refs: List[List[int]], hyps: List[List[int]]) -> float:
     N = sum(len(r) for r in refs)
     return 0.0 if N == 0 else 100.0 * err / N
 
+def _unpack_targets(targets: torch.Tensor, target_lengths: torch.Tensor) -> List[List[int]]:
+    """Recover per-sample reference sequences from concatenated targets."""
+    refs = []
+    t = 0
+    for L in target_lengths.tolist():
+        refs.append(targets[t:t+L].tolist())
+        t += L
+    return refs
+
+@torch.no_grad()
+def _show_samples(batch, model, device, id2word, n=5, blank_id=0):
+    """Print a few REF vs HYP pairs for transparency."""
+    inputs, input_lengths, targets, target_lengths = batch
+    inputs = inputs.to(device)
+    input_lengths = input_lengths.to(device)
+
+    logits = model(inputs, input_lengths)  # [B, T, C]
+    hyps = greedy_decode(logits, blank_id=blank_id)
+    refs = _unpack_targets(targets, target_lengths)
+
+    for i, (r, h) in enumerate(zip(refs, hyps)):
+        if i >= n: break
+        ref_words = " ".join(id2word.get(tok, f"<{tok}>") for tok in r)
+        hyp_words = " ".join(id2word.get(tok, f"<{tok}>") for tok in h)
+        print(f"  ex{i+1:02d} | REF: {ref_words}")
+        print(f"         HYP: {hyp_words}")
+
 # ---------- Train / Eval ----------
 
 def run_epoch(model, loader, optimizer, device, train=True, blank_id=0):
@@ -74,7 +99,7 @@ def run_epoch(model, loader, optimizer, device, train=True, blank_id=0):
 
         logits = model(inputs, input_lengths)      # [B, T, C]
         logp = F.log_softmax(logits, dim=-1)       # [B, T, C]
-        logp = logp.transpose(0, 1)               # -> [T, B, C] for CTC
+        logp = logp.transpose(0, 1)                # -> [T, B, C] for CTC
 
         loss = crit(logp, targets, input_lengths, target_lengths)
 
@@ -104,13 +129,7 @@ def evaluate_wer(model, loader, device, blank_id=0, max_batches=None):
         logits = model(inputs, input_lengths)      # [B, T, C]
         hyps = greedy_decode(logits, blank_id=blank_id)
 
-        # Unpack batched targets back into per-sample lists
-        refs = []
-        t = 0
-        for L in target_lengths.tolist():
-            refs.append(targets[t:t+L].tolist())
-            t += L
-
+        refs = _unpack_targets(targets, target_lengths)
         refs_all.extend(refs)
         hyps_all.extend(hyps)
 
@@ -123,7 +142,7 @@ def main():
     ap.add_argument("--train_root", required=True, help="e.g., keypoints_aug_50/train")
     ap.add_argument("--val_root",   required=True, help="e.g., keypoints_aug_50/val")
     ap.add_argument("--vocab_json", required=True, help="mapping {word:id} with ids 1..50")
-    ap.add_argument("--epochs", type=int, default=10)            # start lean, can raise later
+    ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--feature_dim", type=int, default=354)
@@ -132,8 +151,10 @@ def main():
     ap.add_argument("--layers", type=int, default=4)
     ap.add_argument("--ff", type=int, default=512)
     ap.add_argument("--dropout", type=float, default=0.1)
-    ap.add_argument("--num_trials", type=int, default=10, help="WER trials to average at end")
+    ap.add_argument("--num_trials", type=int, default=10, help="number of WER trials after training")
     ap.add_argument("--eval_sentences", type=int, default=500, help="sentences per trial (approx)")
+    ap.add_argument("--print_samples", type=int, default=0, help="print N REF/HYP pairs after each epoch")
+    ap.add_argument("--valhard", action="store_true", help="enable harder, more realistic validation")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -143,9 +164,23 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Datasets (exactly 10-word sentences, top-50 vocab, no extra aug)
-    train_ds = FixedSentenceJSONDataset(root_dir=args.train_root, vocab_json=args.vocab_json)
-    val_ds   = FixedSentenceJSONDataset(root_dir=args.val_root,   vocab_json=args.vocab_json)
+    # Load vocab + inverse map for pretty printing
+    with open(args.vocab_json, "r") as f:
+        vocab = {k: int(v) for k, v in json.load(f).items()}
+    id2word = {i: w for w, i in vocab.items()}
+
+    # Datasets (exactly 10-word sentences, top-50 vocab)
+    train_ds = FixedSentenceJSONDataset(
+        root_dir=args.train_root,
+        vocab_json=args.vocab_json,
+        # keep training clean
+        # (valhard is for validation realism only)
+    )
+    val_ds = FixedSentenceJSONDataset(
+        root_dir=args.val_root,
+        vocab_json=args.vocab_json,
+        valhard=args.valhard,  # tougher, more realistic validation if enabled
+    )
 
     num_classes = train_ds.vocab_size + 1  # +blank(0) => 51
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
@@ -172,6 +207,12 @@ def main():
         val_wer = evaluate_wer(model, val_loader, device, blank_id=0, max_batches=50)
         print(f"Epoch {ep:02d} | train_loss={tr_loss:.4f} | val_WER%≈{val_wer:.2f}")
 
+        if args.print_samples > 0:
+            # Print a few REF/HYP pairs from the first val batch
+            for batch in val_loader:
+                _show_samples(batch, model, device, id2word, n=args.print_samples, blank_id=0)
+                break
+
         if val_wer < best_val:
             best_val = val_wer
             ckpt = f"models/TSF_CTC_best_WER{best_val:.2f}.pt"
@@ -179,14 +220,12 @@ def main():
             print(f"✅ Saved {ckpt}")
 
     # ---- Trials: %WER over fresh synthetic sentences, averaged ----
-    # Each trial reseeds the val dataset for new 10-word draws.
+    # Each trial reseeds so we draw different 10-word combos/videos.
     trial_wers = []
     for t in range(args.num_trials):
-        # Nudge seed so we sample different 10-word combos/videos each trial
         seed = args.seed + 1000 + t
         random.seed(seed); torch.manual_seed(seed)
 
-        # Make a fresh val loader and cap the number of batches to approx eval_sentences
         bs = args.batch_size
         max_batches = max(1, args.eval_sentences // bs)
 
@@ -195,10 +234,10 @@ def main():
         print(f"Trial {t+1:02d} WER% = {wer:.2f}")
 
     avg_wer = sum(trial_wers) / len(trial_wers)
-    print(f"\n--- Summary ---")
+    print("\n--- Summary ---")
     print("Trials:", ", ".join(f"{w:.2f}%" for w in trial_wers))
     print(f"Average WER% over {len(trial_wers)} trials = {avg_wer:.2f}")
     print("----------------")
-    
+
 if __name__ == "__main__":
     main()

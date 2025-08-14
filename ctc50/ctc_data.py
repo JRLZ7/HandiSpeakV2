@@ -1,4 +1,4 @@
-# ctc_data.py
+# ctc_data_test.py
 # Fixed 10-word synthetic sentences from per-word JSON bundles (your exact format).
 # Compatible with nn.CTCLoss (blank=0). Feature order matches data_keypoints.py.
 
@@ -36,6 +36,12 @@ HAND_LANDMARK_COUNT = 21            # Left & right hand indices 0..20
 # Features per frame = 118 * 3 (x,y,z) = 354
 FEATURE_DIM = 354
 
+# --- Feature block ranges (for ValHard occlusion) ---
+FACE_SLICE = slice(0, 216)      # 72 * 3
+POSE_SLICE = slice(216, 228)    # 4 * 3
+LH_SLICE   = slice(228, 291)    # 21 * 3
+RH_SLICE   = slice(291, 354)    # 21 * 3
+
 
 def _flatten_frame_to_vec(frame: Dict[str, Any]) -> np.ndarray:
     """
@@ -48,7 +54,6 @@ def _flatten_frame_to_vec(frame: Dict[str, Any]) -> np.ndarray:
 
     # Face (72 entries), in FACE_LANDMARKS order
     face_list = frame.get("face", [])
-    # Build id->(x,y,z) map for safety (though extractor already outputs in correct order)
     face_map = {kp["id"]: (kp["x"], kp["y"], kp["z"]) for kp in face_list}
     for i in FACE_LANDMARKS:
         x, y, z = face_map.get(i, (0.0, 0.0, 0.0))
@@ -63,7 +68,6 @@ def _flatten_frame_to_vec(frame: Dict[str, Any]) -> np.ndarray:
 
     # Left hand (0..20)
     lh_list = frame.get("left_hand", [])
-    # Extractor uses enumerate so ids are 0..20 — we reconstruct by id
     lh_map = {kp["id"]: (kp["x"], kp["y"], kp["z"]) for kp in lh_list}
     for i in range(HAND_LANDMARK_COUNT):
         x, y, z = lh_map.get(i, (0.0, 0.0, 0.0))
@@ -104,7 +108,8 @@ class FixedSentenceJSONDataset(Dataset):
     - Only words listed in vocab_json (IDs 1..50) are used; 0 is reserved for CTC blank.
     - Each __getitem__ picks 10 words (with replacement), selects a random video for each,
       converts them to [T_i, 354], and concatenates along time → one long sentence.
-    - No extra aug: your JSONs already contain Gaussian noise + horizontal translation.
+    - No extra aug in train: your JSONs already contain Gaussian noise + horizontal translation.
+    - Optional ValHard mode (validation realism): time-warp, boundary trim+crossfade, hand occlusions.
     """
 
     def __init__(
@@ -114,7 +119,8 @@ class FixedSentenceJSONDataset(Dataset):
         words_per_sentence: int = 10,    # fixed; assert enforced
         frame_gap: int = 0,              # optional zero frames between words
         seed: int = 42,
-        load_into_memory: bool = True    # True: pre-parse JSONs to RAM for speed
+        load_into_memory: bool = True,   # True: pre-parse JSONs to RAM for speed
+        valhard: bool = True            # NEW: enable realistic validation difficulty
     ):
         super().__init__()
         assert words_per_sentence == 10, "This dataset is fixed to 10-word sentences."
@@ -122,6 +128,15 @@ class FixedSentenceJSONDataset(Dataset):
         self.words_per_sentence = words_per_sentence
         self.frame_gap = frame_gap
         self.load_into_memory = load_into_memory
+        self.valhard = valhard
+
+        # ValHard parameters (used only if valhard=True)
+        self.vh_time_warp_prob = 0.40
+        self.vh_time_warp_scale = (0.8, 1.25)
+        self.vh_occlusion_prob = 0.10  # 10% of words get a short LH/RH occlusion
+        self.vh_crossfade_minmax = (1, 2)  # frames
+        self.vh_trim_front_max = 2
+        self.vh_trim_back_max = 3
 
         random.seed(seed)
         np.random.seed(seed)
@@ -153,7 +168,6 @@ class FixedSentenceJSONDataset(Dataset):
             with open(jp, "r") as f:
                 data = json.load(f)  # {video_id: [frame_dict, ...], ...}
 
-            # Ensure expected shape (dict of video_id -> list of frames)
             if not isinstance(data, dict):
                 raise ValueError(f"{jp} must be a dict of video_id -> frames list.")
 
@@ -161,11 +175,9 @@ class FixedSentenceJSONDataset(Dataset):
                 if not isinstance(frames, list) or len(frames) == 0:
                     continue  # skip empty videos gracefully
                 if self.load_into_memory:
-                    # Convert once: store as [T, 354] ndarray for speed
                     arr = _video_to_TF(frames)        # [T, 354]
                     self.index[word].append(arr)
                 else:
-                    # Lazy: keep raw frames; convert in __getitem__
                     self.index[word].append(frames)
 
             if len(self.index[word]) == 0:
@@ -186,6 +198,57 @@ class FixedSentenceJSONDataset(Dataset):
     def __len__(self):
         return self._size
 
+    # ---------- ValHard helpers ----------
+
+    def _time_warp(self, clip: np.ndarray) -> np.ndarray:
+        if np.random.rand() >= self.vh_time_warp_prob:
+            return clip
+        T, F = clip.shape
+        scale = np.random.uniform(*self.vh_time_warp_scale)
+        new_T = max(1, int(round(T * scale)))
+        idx = np.linspace(0, T - 1, num=new_T)
+        lo = np.floor(idx).astype(int)
+        hi = np.minimum(lo + 1, T - 1)
+        a = (idx - lo)[:, None]
+        warped = (1.0 - a) * clip[lo] + a * clip[hi]
+        return warped.astype(np.float32)
+
+    def _trim_clip(self, clip: np.ndarray) -> np.ndarray:
+        if clip.shape[0] <= 6:
+            return clip
+        trim_front = np.random.randint(0, self.vh_trim_front_max + 1)  # 0..2
+        trim_back  = np.random.randint(0, self.vh_trim_back_max + 1)   # 0..3
+        if clip.shape[0] - trim_front - trim_back >= 5:
+            clip = clip[trim_front: clip.shape[0] - trim_back]
+        return clip
+
+    def _occlude_hand_burst(self, clip: np.ndarray) -> np.ndarray:
+        if clip.shape[0] <= 8 or np.random.rand() >= self.vh_occlusion_prob:
+            return clip
+        T = clip.shape[0]
+        start = np.random.randint(0, T - 5)
+        length = np.random.randint(3, 7)  # 3..6
+        if np.random.rand() < 0.5:
+            clip[start:start+length, LH_SLICE] = 0.0
+        else:
+            clip[start:start+length, RH_SLICE] = 0.0
+        return clip
+
+    def _crossfade(self, prev: np.ndarray, curr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        if prev.shape[0] < 3 or curr.shape[0] < 3:
+            return prev, curr
+        k_min, k_max = self.vh_crossfade_minmax
+        k = np.random.randint(k_min, k_max + 1)  # 1 or 2
+        k = min(k, prev.shape[0], curr.shape[0])
+        fade_in  = np.linspace(0.0, 1.0, k, dtype=np.float32)[:, None]
+        fade_out = 1.0 - fade_in
+        blended = prev[-k:] * fade_out + curr[:k] * fade_in
+        prev = np.concatenate([prev[:-k], blended], axis=0)
+        curr = curr[k:]
+        return prev, curr
+
+    # ---------- Main sampling ----------
+
     def __getitem__(self, idx):
         # Pick exactly 10 words (with replacement so repeats are possible/realistic)
         chosen_words = random.choices(self.words, k=self.words_per_sentence)
@@ -199,16 +262,29 @@ class FixedSentenceJSONDataset(Dataset):
 
             # Resolve to [T, 354]
             if isinstance(src, np.ndarray):
-                clip = src
+                clip = src.copy()
             else:
-                # Lazy path: convert raw frames now
                 clip = _video_to_TF(src)
 
+            # ValHard realism
+            if self.valhard:
+                # time-warp, trim, occlude
+                clip = self._time_warp(clip)
+                clip = self._trim_clip(clip)
+                clip = self._occlude_hand_burst(clip)
+
             labels.append(self.word2id[w])
+
+            # Crossfade with previous if ValHard (replaces explicit frame_gap)
+            if self.valhard and len(seqs) > 0:
+                prev = seqs[-1]
+                prev, clip = self._crossfade(prev, clip)
+                seqs[-1] = prev
+
             seqs.append(clip)
 
-            # Optional explicit zero-gap frames to make boundaries more obvious
-            if self.frame_gap > 0 and i < self.words_per_sentence - 1:
+            # Optional explicit zero-gap frames (keep OFF for ValHard)
+            if (not self.valhard) and self.frame_gap > 0 and i < self.words_per_sentence - 1:
                 seqs.append(np.zeros((self.frame_gap, FEATURE_DIM), dtype=np.float32))
 
         sentence = np.concatenate(seqs, axis=0).astype(np.float32)  # [T_total, 354]
