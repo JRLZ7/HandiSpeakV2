@@ -11,7 +11,7 @@ plt.plot(epochs, val_wer, marker='o', linestyle='-', color='blue', label='Valida
 # Labels & Title
 plt.xlabel("Epoch")
 plt.ylabel("Validation WER (%)")
-plt.title("Validation WER Over Epochs (TSF + CTC)")
+plt.title("Validation WER Over Epochs")
 plt.xticks(epochs)
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend()
